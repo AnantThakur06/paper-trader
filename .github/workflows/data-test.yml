@@ -1,0 +1,17 @@
+name: Data test
+
+# Run this once by hand (Actions > Data test > Run workflow) to check that
+# GitHub's servers can get NSE prices from Yahoo.
+on: workflow_dispatch
+
+jobs:
+  check-yahoo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-watchman.txt
+      - run: python check_data.py

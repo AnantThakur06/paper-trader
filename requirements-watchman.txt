@@ -1,0 +1,6 @@
+# Lighter list for GitHub Actions (no Streamlit needed there)
+yfinance==1.7.0
+pandas==3.0.6
+SQLAlchemy==2.1.1
+psycopg2-binary==2.9.13
+tzdata
