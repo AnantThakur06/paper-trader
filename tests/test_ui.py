@@ -130,8 +130,12 @@ def test_history_page(app):
     vals = {m.label: m.value for m in at.metric}
     assert vals["Closed trades"] == "2"
     assert vals["Win rate"] == "50%"
+    assert vals["Stop loss hit"] == "1 of 2" and vals["You booked profit"] == "1 of 2"
+    assert vals["Trailing SL, in profit"] == "0 of 2" and vals["You sold at a loss"] == "0 of 2"
+    assert any("Stop loss closed 1 trade, you closed 1." == c.value for c in at.caption)
     df = at.dataframe[0].value
     assert set(df["Stock"]) == {"INFY", "TMPV"}
+    assert dict(zip(df["Stock"], df["Exited by"])) == {"INFY": "Stop loss", "TMPV": "You"}
     assert any("SL hit" in x for x in df["What happened"])
     at.selectbox[1].set_value("Losses only").run()
     ok(at)

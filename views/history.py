@@ -82,6 +82,24 @@ else:
         st.markdown(f"{ui.pnl_md(avg_w)} / {ui.pnl_md(avg_l)}")
         st.caption(f"Wins are {avg_w / abs(avg_l):.2f}× your losses" if wins and losses and avg_l else " ")
 
+    if shown:
+        with st.container(border=True):
+            st.markdown("**How your trades ended**")
+            order = ["Stop loss hit", "Gap down below SL", "Trailing SL, in profit",
+                     "You booked profit", "You sold at a loss", "Part booked, rest by SL"]
+            always = {"Stop loss hit", "Trailing SL, in profit", "You booked profit", "You sold at a loss"}
+            counts = {c: [t for t in shown if t["category"] == c] for c in order}
+            cats = [c for c in order if c in always or counts[c]]
+            for col, c in zip(st.columns(len(cats)), cats):
+                group = counts[c]
+                col.metric(c, f"{len(group)} of {len(shown)}")
+                col.caption(f"Net {ui.signed(sum(t['net'] for t in group))}" if group else "None yet")
+            by_sl = sum(1 for t in shown if t["exited_by"] == "Stop loss")
+            by_you = sum(1 for t in shown if t["exited_by"] == "You")
+            st.caption(f"Stop loss closed {by_sl} trade{'s' if by_sl != 1 else ''}, "
+                       f"you closed {by_you}" + (f", and {len(shown) - by_sl - by_you} were both"
+                                                  if len(shown) - by_sl - by_you else "") + ".")
+
     if not shown:
         st.info("No trades match these filters.")
     else:
@@ -90,6 +108,7 @@ else:
             "Bought @": t["entry_price"], "Bought on": fmt_ist(t["entry_time"]),
             "Sold @": t["sell_avg"], "Sold on": fmt_ist(t["sold_at"]),
             "Held": "Same day" if t["held_days"] == 0 else f"{t['held_days']} days", "Qty": t["qty"],
+            "Exited by": t["exited_by"],
             "What happened": t["result"] + (f" ({t['detail']})" if t["detail"] else ""),
             "Gross": t["gross"], "Charges": t["charges"], "Net": t["net"], "Note": t["note"] or "",
         } for t in shown])

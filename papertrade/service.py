@@ -442,6 +442,19 @@ class PaperBroker:
             if reasons & manual and last["reason"] in ("SL", "GAP"):
                 result = "Part booked, then " + (result if result.startswith("SL")
                                                  else result[0].lower() + result[1:])
+            # who closed it, and a simple bucket for the "How your trades ended" card
+            if last["reason"] in ("SL", "GAP"):
+                if reasons & manual:
+                    exited_by, category = "Both", "Part booked, rest by SL"
+                elif last["reason"] == "GAP":
+                    exited_by, category = "Stop loss", "Gap down below SL"
+                elif kind == "trail":
+                    exited_by, category = "Stop loss", "Trailing SL, in profit"
+                else:
+                    exited_by, category = "Stop loss", "Stop loss hit"
+            else:
+                exited_by = "You"
+                category = "You booked profit" if net > 0 else "You sold at a loss"
             if len(ex) > 1 and not detail:
                 detail = f"{len(ex)} sells"
             out.append({
@@ -452,6 +465,7 @@ class PaperBroker:
                 "sold_at": last["time"],
                 "held_days": (ist_date(last["time"]) - ist_date(first["entry_time"])).days,
                 "result": result, "kind": kind, "detail": detail,
+                "exited_by": exited_by, "category": category,
                 "gross": sum(x["gross_pnl"] for x in ex),
                 "charges": sum(x["sell_charges"] + x["buy_charges_alloc"] for x in ex),
                 "net": net, "exits": ex,

@@ -418,6 +418,10 @@ def test_completed_trades_labels_and_totals(env):
     assert rows["C"]["result"] == "Part booked, then SL hit at ₹290.00" and rows["C"]["qty"] == 10
     assert rows["D"]["result"] == "Profit booked" and rows["D"]["detail"] == "2 sells"
     assert rows["D"]["sell_avg"] == 420 and rows["D"]["held_days"] == 0
+    assert (rows["A"]["exited_by"], rows["A"]["category"]) == ("Stop loss", "Trailing SL, in profit")
+    assert (rows["B"]["exited_by"], rows["B"]["category"]) == ("Stop loss", "Gap down below SL")
+    assert (rows["C"]["exited_by"], rows["C"]["category"]) == ("Both", "Part booked, rest by SL")
+    assert (rows["D"]["exited_by"], rows["D"]["category"]) == ("You", "You booked profit")
     total = sum(r["net"] for r in rows.values())
     assert total == pytest.approx(sum(e["net_pnl"] for e in b.exits_with_trades()))
     for r in rows.values():
