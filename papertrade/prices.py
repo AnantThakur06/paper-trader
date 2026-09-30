@@ -15,6 +15,21 @@ log = logging.getLogger(__name__)
 class Quote:
     price: float
     ts: datetime  # naive UTC time of the candle the price came from
+    prev_close: float | None = None  # yesterday's close, for the day's change
+
+
+@dataclass
+class IndexSnap:
+    name: str
+    value: float
+    change: float
+    change_pct: float
+    series: list  # today's closes, for the small chart
+    ts: datetime  # naive UTC time of the latest value
+
+
+INDICES = {"NIFTY 50": "^NSEI", "NIFTY BANK": "^NSEBANK",
+           "SENSEX": "^BSESN", "INDIA VIX": "^INDIAVIX"}
 
 
 class PriceError(Exception):
@@ -35,6 +50,13 @@ def normalize_symbol(raw: str) -> str:
     return s
 
 
+def _prev_close(df):
+    """Close of the last candle before the newest day in the data."""
+    last_day = df.index[-1].date()
+    before = df[[ts.date() < last_day for ts in df.index]]
+    return round(float(before["Close"].iloc[-1]), 2) if len(before) else None
+
+
 def final_only(candles: list[Candle], interval_min: int, now: datetime) -> list[Candle]:
     """Drop the newest candle if it might still be forming (delayed data)."""
     if not candles:
@@ -52,15 +74,15 @@ class YahooPrices:
         self._cache: dict = {}
 
     # -- raw download -------------------------------------------------------
-    def _history(self, symbol: str, **kwargs):
-        key = (symbol, tuple(sorted(kwargs.items())))
+    def _history(self, symbol: str, raw: bool = False, **kwargs):
+        key = (symbol, raw, tuple(sorted(kwargs.items())))
         hit = self._cache.get(key)
         if hit and _time.monotonic() - hit[0] < self.cache_seconds:
             return hit[1]
         import yfinance as yf  # imported here so tests don't need internet
 
         try:
-            df = yf.Ticker(yahoo_symbol(symbol)).history(
+            df = yf.Ticker(symbol if raw else yahoo_symbol(symbol)).history(
                 auto_adjust=False, actions=False, prepost=False, **kwargs
             )
         except Exception as e:  # network trouble, rate limits, bad symbol
@@ -75,7 +97,18 @@ class YahooPrices:
     def quote(self, symbol: str) -> Quote:
         df = self._history(symbol, period="5d", interval="1m")
         ts = df.index[-1]
-        return Quote(price=round(float(df["Close"].iloc[-1]), 2), ts=to_utc_naive(ts))
+        return Quote(price=round(float(df["Close"].iloc[-1]), 2), ts=to_utc_naive(ts),
+                     prev_close=_prev_close(df))
+
+    def index_snapshot(self, name: str, ticker: str) -> IndexSnap:
+        df = self._history(ticker, raw=True, period="5d", interval="15m")
+        last_day = df.index[-1].date()
+        today = df[[ts.date() == last_day for ts in df.index]]
+        value = float(today["Close"].iloc[-1])
+        prev = _prev_close(df) or float(today["Open"].iloc[0])
+        return IndexSnap(name, round(value, 2), round(value - prev, 2),
+                         round((value / prev - 1) * 100, 2),
+                         [round(float(x), 2) for x in today["Close"]], to_utc_naive(df.index[-1]))
 
     def candles(self, symbol: str, since: datetime, now: datetime | None = None) -> list[Candle]:
         """Finished candles that started after `since` (naive UTC).
@@ -123,6 +156,7 @@ class FakePrices:
         self.series: dict[str, list[Candle]] = {}
         self.quotes: dict[str, Quote] = {}
         self.fail: set[str] = set()
+        self.indices: dict = {}  # ticker -> (value, change, series)
 
     def set_quote(self, symbol, price, ts):
         self.quotes[symbol] = Quote(price, ts)
@@ -137,6 +171,13 @@ class FakePrices:
             raise PriceError(f"No price data for {symbol}")
         return self.quotes[symbol]
 
+    def index_snapshot(self, name, ticker):
+        if ticker not in self.indices:
+            raise PriceError(f"No index data for {name}")
+        value, change, series = self.indices[ticker]
+        return IndexSnap(name, value, change, round(change / (value - change) * 100, 2),
+                         series, now_utc())
+
     def candles(self, symbol, since, now=None):
         if symbol in self.fail:
             raise PriceError(f"No price data for {symbol}")
@@ -145,4 +186,5 @@ class FakePrices:
         return final_only(out, 1, now)
 
 
-__all__ = ["YahooPrices", "FakePrices", "Quote", "PriceError", "normalize_symbol", "IST"]
+__all__ = ["YahooPrices", "FakePrices", "Quote", "IndexSnap", "INDICES", "PriceError",
+           "normalize_symbol", "IST"]

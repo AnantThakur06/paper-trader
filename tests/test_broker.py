@@ -387,3 +387,53 @@ def test_yahoo_quote(monkeypatch):
     monkeypatch.setattr(yp, "_history", lambda *a, **k: frame)
     q = yp.quote("X")
     assert q.price == 1400.46 and q.ts == ist(*MON, 10, 44)
+
+
+# ------------------------------------------------ history: one row per trade
+def test_completed_trades_labels_and_totals(env):
+    b, p, clock = env
+    for sym, px in [("A", 100), ("B", 200), ("C", 300), ("D", 400)]:
+        p.set_quote(sym, px, ist(*MON, 9, 45))
+    b.place_buy("A", 10, "MARKET", sl=95)     # trailing SL hit in profit
+    b.place_buy("B", 10, "MARKET", sl=190)    # gap down
+    b.place_buy("C", 10, "MARKET", sl=290)    # part booked, rest SL
+    b.place_buy("D", 10, "MARKET", sl=390)    # profit booked in 2 sells
+    ta, tb, tc, td = b.trades_with_status("OPEN")
+    clock["now"] = ist(*MON, 11, 0)
+    for sym, px in [("A", 110), ("C", 310), ("D", 420)]:
+        p.set_quote(sym, px, ist(*MON, 10, 45))
+    b.move_sl(ta["id"], 105)
+    b.sell(tc["id"], 4)
+    b.sell(td["id"], 5)
+    b.sell(td["id"], 5)
+    p.add_candle("A", ist(*MON, 11, 5), 108, 108, 104, 106)
+    p.add_candle("B", ist(*TUE, 9, 15), 180, 182, 178, 181)
+    p.add_candle("C", ist(*TUE, 9, 20), 295, 296, 289, 290)
+    clock["now"] = ist(*TUE, 10, 30)
+    b.sync()
+    rows = {r["symbol"]: r for r in b.completed_trades()}
+    assert rows["A"]["result"] == "Trailing SL hit, in profit" and rows["A"]["kind"] == "trail"
+    assert "₹95.00 → ₹105.00" in rows["A"]["detail"]
+    assert rows["B"]["result"] == "Gap down below SL" and rows["B"]["held_days"] == 1
+    assert rows["C"]["result"] == "Part booked, then SL hit at ₹290.00" and rows["C"]["qty"] == 10
+    assert rows["D"]["result"] == "Profit booked" and rows["D"]["detail"] == "2 sells"
+    assert rows["D"]["sell_avg"] == 420 and rows["D"]["held_days"] == 0
+    total = sum(r["net"] for r in rows.values())
+    assert total == pytest.approx(sum(e["net_pnl"] for e in b.exits_with_trades()))
+    for r in rows.values():
+        assert r["gross"] - r["charges"] == pytest.approx(r["net"], abs=0.02)
+
+
+def test_index_snapshot_from_yahoo_frame(monkeypatch):
+    frame = _yahoo_frame([
+        ("2026-10-02 15:15", 24900, 24950, 24880, 24940),   # previous day close = 24,940
+        ("2026-10-05 09:15", 24950, 25000, 24940, 24990),
+        ("2026-10-05 09:30", 24990, 25060, 24980, 25040),
+    ])
+    yp = YahooPrices()
+    monkeypatch.setattr(yp, "_history", lambda *a, **k: frame)
+    s = yp.index_snapshot("NIFTY 50", "^NSEI")
+    assert s.value == 25040 and s.change == 100 and s.change_pct == pytest.approx(0.4, abs=0.01)
+    assert s.series == [24990, 25040]
+    q = yp.quote("X")
+    assert q.prev_close == 24940

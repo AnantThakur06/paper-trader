@@ -73,12 +73,12 @@ If you don't open the app for about 12 hours, Streamlit puts it to sleep. Press 
 
 ## Daily use
 
-- **Place order**: type the symbol (RELIANCE, SBIN, TMPV...), quantity, stop loss.
-  The preview shows the cost, charges, and how much you lose if the SL hits.
-- **Open trades**: current price and P&L. Move the stop loss or sell shares here.
-- **Pending**: limit orders waiting to fill, and sells queued for the next open. Cancel here.
-- **History**: every sell with times, what happened, and net P&L after charges.
-  Download it as CSV any time.
+- **Trade page**: place orders (quick −1/−2/−3% stop loss, or size by risk), see the cost,
+  charges and your loss if the SL hits. Below: **Active trades** with room to SL, P&L,
+  and Move SL / Sell on each row, then **Pending orders** with Cancel.
+- **History page**: one row per finished trade with what happened, stats (win rate, charges
+  as % of profit), P&L over time, results by setup, filters, and CSV download.
+- **Settings page**: reset the account, auto-check status, charge rates.
 
 The app also checks your trades every time you open it, so the screen is correct even
 if GitHub's schedule runs late.
@@ -129,7 +129,7 @@ Without secrets this uses a local file (`paper_trades.db`), separate from your c
 account. To use the cloud account from your PC, copy `.streamlit/secrets.toml.example`
 to `.streamlit/secrets.toml` and fill it in.
 
-Run the tests: `pip install pytest` then `python -m pytest -q` (26 tests, all trading rules).
+Run the tests: `pip install pytest` then `python -m pytest -q` (35 tests: all trading rules and every page).
 
 ## If something goes wrong
 
@@ -144,7 +144,11 @@ Run the tests: `pip install pytest` then `python -m pytest -q` (26 tests, all tr
 ## Project layout
 
 ```
-app.py                  the screen (Streamlit)
+app.py                  starts the app: sidebar, market bar, page menu
+ui.py                   pieces shared by all pages (account card, index strip)
+views/trade.py          Trade page: place order, active trades, pending orders
+views/history.py        History page: finished trades, stats, P&L curve
+views/settings.py       Settings page: reset, auto-check status, charges
 watchman.py             the 5-minute checker (GitHub Actions runs it)
 check_data.py           one-time Yahoo data test
 papertrade/engine.py    the rules: fills, stop loss, gaps (no internet, no database)
@@ -153,5 +157,5 @@ papertrade/charges.py   Indian delivery charges
 papertrade/prices.py    Yahoo Finance data
 papertrade/db.py        database tables (SQLite on PC, PostgreSQL in the cloud)
 papertrade/config.py    numbers you may want to change
-tests/                  26 tests with hand-checked numbers
+tests/                  35 tests: trading rules with hand-checked numbers, plus a click-through of every page
 ```

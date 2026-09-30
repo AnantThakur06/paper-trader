@@ -1,9 +1,15 @@
 [theme]
 base = "light"
-primaryColor = "#2A5C8A"
-backgroundColor = "#F6F8FA"
+primaryColor = "#1F5A96"
+backgroundColor = "#F3F5F8"
 secondaryBackgroundColor = "#E9EEF4"
-textColor = "#15202B"
+textColor = "#131C27"
+font = "IBM Plex Sans:https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+
+[theme.sidebar]
+backgroundColor = "#0F1B2A"
+secondaryBackgroundColor = "#162538"
+textColor = "#E6ECF3"
 
 [browser]
 gatherUsageStats = false

@@ -408,6 +408,57 @@ class PaperBroker:
             "by_setup": by_setup,
         }
 
+    def completed_trades(self) -> list[dict]:
+        """One row per finished trade (all its sells combined), newest first."""
+        moves: dict[int, list] = {}
+        for m in reversed(self.sl_log()):          # oldest change first
+            moves.setdefault(m["trade_id"], []).append(m)
+        grouped: dict[int, list] = {}
+        for e in self.exits_with_trades():
+            if e["status"] == "CLOSED":
+                grouped.setdefault(e["trade_id"], []).append(e)
+
+        out = []
+        for tid, ex in grouped.items():
+            first, last = ex[0], ex[-1]
+            qty = sum(x["qty"] for x in ex)
+            net = sum(x["net_pnl"] for x in ex)
+            mv = moves.get(tid, [])
+            reasons = {x["reason"] for x in ex}
+            manual = {"MANUAL", "MANUAL_OPEN"}
+            if last["reason"] == "GAP":
+                result, kind = "Gap down below SL", "loss"
+                detail = f"SL was {rs(last['sl_at_exit'])}, opened {rs(last['price'])}"
+            elif last["reason"] == "SL":
+                if mv and last["price"] >= first["entry_price"]:
+                    result, kind = "Trailing SL hit, in profit", "trail"
+                    detail = f"SL moved {rs(mv[0]['old_sl'])} → {rs(mv[-1]['new_sl'])}"
+                else:
+                    result, kind = f"SL hit at {rs(last['price'])}", "loss"
+                    detail = ""
+            else:
+                result, kind = ("Profit booked", "win") if net > 0 else ("Sold at a loss", "loss")
+                detail = ""
+            if reasons & manual and last["reason"] in ("SL", "GAP"):
+                result = "Part booked, then " + (result if result.startswith("SL")
+                                                 else result[0].lower() + result[1:])
+            if len(ex) > 1 and not detail:
+                detail = f"{len(ex)} sells"
+            out.append({
+                "trade_id": tid, "symbol": first["symbol"], "setup": first["setup"],
+                "note": first["note"], "order_type": first["order_type"], "qty": qty,
+                "entry_price": first["entry_price"], "entry_time": first["entry_time"],
+                "sell_avg": sum(x["qty"] * x["price"] for x in ex) / qty,
+                "sold_at": last["time"],
+                "held_days": (ist_date(last["time"]) - ist_date(first["entry_time"])).days,
+                "result": result, "kind": kind, "detail": detail,
+                "gross": sum(x["gross_pnl"] for x in ex),
+                "charges": sum(x["sell_charges"] + x["buy_charges_alloc"] for x in ex),
+                "net": net, "exits": ex,
+            })
+        out.sort(key=lambda r: r["sold_at"], reverse=True)
+        return out
+
     # ------------------------------------------------------------------ misc
     def get_meta(self, key, default=None):
         with self.engine.connect() as conn:
